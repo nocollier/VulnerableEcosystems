@@ -43,7 +43,7 @@ Once you have reduced the database to the selection you need, then the `path` co
 
 ## Getting your feet wet with clustering
 
-Particularly for those who have never worked with clustering, it may be helpful to take a look at the following [overview](https://scikit-learn.org/stable/modules/clustering.html#clustering) from `scikit-learn`. The cluster code that Forrest, et al. have developed is based on the k-means algorithm. It may be helpful for you to play around with an implementation of the algorithm that already has a python interface. More details can be found on their well documented [site](https://scikit-learn.org/stable/modules/generated/sklearn.cluster.KMeans.html#sklearn-cluster-kmeans).
+Particularly for those who have never worked with clustering, it may be helpful to take a look at the following [overview](https://scikit-learn.org/stable/modules/clustering.html#clustering) from `scikit-learn`. The cluster code that Forrest, et al. have developed is an implementation of the k-means algorithm. It may be helpful for you to play around with a version of the algorithm that already has a python/numpy interface. More details can be found on their well-documented [site](https://scikit-learn.org/stable/modules/generated/sklearn.cluster.KMeans.html#sklearn-cluster-kmeans).
 
 ## Running the production cluster code
 
