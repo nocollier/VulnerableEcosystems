@@ -1,58 +1,37 @@
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
-import numpy as np
 import pandas as pd
 from dash.dependencies import Input, Output
 import plotly.express as px
+import numpy as np
 
-from ILAMB.ModelResult import ModelResult
-from sklearn.cluster import KMeans
-
-def GetVariables():
-    m = ModelResult("/home/nate/data/ILAMB/MODELS/CMIP6/CESM2")
-    t0,tf = 365*(1980-1850),365*(2000-1850)
-    Vs = {}
-    mask = None
-    for vname in ['tas','pr','gpp','ra','nbp','hurs']:
-        v = m.extractTimeSeries(vname,initial_time=t0,final_time=tf)
-        v = v.integrateInTime(mean=True)
-        if mask is None: mask = v.data.mask
-        mask += v.data.mask
-        Vs[vname] = v
-    data = None
-    for i,vname in enumerate(Vs):
-        v = Vs[vname].data
-        v = np.ma.masked_array(v,mask=mask)
-        v = v.compressed()
-        if data is None: data = np.zeros((v.size,len(Vs.keys())))
-        data[:,i] = v        
-    kmeans = KMeans(n_clusters=10,random_state=0).fit(data)
-    out = {}
-    for i,vname in enumerate(Vs):
-        out[vname] = kmeans.cluster_centers_[:,i]
-    return out
-
-# make a sample data frame where the columns are the cluster centroids
-df = pd.DataFrame(GetVariables())
+# read in the clustering datafiles
+names = ['variable_%d' % i for i in range(22)]
+df  = pd.read_csv("seeds.out.cwe_regimes.50.final"      ,sep="\t",header=None,names=['junk',]+names)
+dfu = pd.read_csv("seeds.out.cwe_regimes.50.final.unstd",sep=" " ,header=None,names=['junk',]+names)
 
 # make the Dash app, setup the html structure
+pulldown_style = dict(width='90%',display='inline-block',verticalAlign="middle",horizontalAlign="right")
+options = [dict(label=n,value=n) for n in names]
 app = dash.Dash(__name__, external_stylesheets=['https://codepen.io/chriddyp/pen/bWLwgP.css'])
 app.layout = html.Div([
     html.Div(
-        dcc.Graph(id='g1', config={'displayModeBar': False}),
-        className='four columns'
-    ),
+        [html.Label(["x-axis ",dcc.Dropdown(id="p1x",value=names[0],options=options,style=pulldown_style)]),
+         html.Label(["y-axis ",dcc.Dropdown(id="p1y",value=names[1],options=options,style=pulldown_style)]),
+         dcc.Graph(id='g1', config={'displayModeBar': False})],className='four columns'),
     html.Div(
-        dcc.Graph(id='g2', config={'displayModeBar': False}),
-        className='four columns'
-        ),
+        [html.Label(["x-axis ",dcc.Dropdown(id="p2x",value=names[2],options=options,style=pulldown_style)]),
+         html.Label(["y-axis ",dcc.Dropdown(id="p2y",value=names[3],options=options,style=pulldown_style)]),
+         dcc.Graph(id='g2', config={'displayModeBar': False})],className='four columns'),
     html.Div(
-        dcc.Graph(id='g3', config={'displayModeBar': False}),
-        className='four columns'
-    )
+        [html.Label(["x-axis ",dcc.Dropdown(id="p3x",value=names[4],options=options,style=pulldown_style)]),
+         html.Label(["y-axis ",dcc.Dropdown(id="p3y",value=names[5],options=options,style=pulldown_style)]),
+         dcc.Graph(id='g3', config={'displayModeBar': False})],className='four columns'),
+    html.Div(
+        [dcc.Checklist(id='std',value=[],options=[{'label': 'standardized data', 'value': 'standardized data'}])],
+        className='four columns'),
 ], className='row')
-
 
 def get_figure(df, x_col, y_col, selectedpoints, selectedpoints_local):
 
@@ -73,7 +52,7 @@ def get_figure(df, x_col, y_col, selectedpoints, selectedpoints_local):
                       mode='markers+text',
                       marker={ 'color': 'rgba(0, 116, 217, 0.7)',
                                'size' : 20 },
-                      unselected={'marker'  : { 'opacity': 0.30 },
+                      unselected={'marker'  : { 'opacity': 0.05 },
                                   'textfont': { 'color'  : 'rgba(0, 0, 0, 0)' }})
     fig.update_layout(margin={'l': 20, 'r': 0, 'b': 15, 't': 5}, dragmode='select', hovermode=False)
     fig.add_shape(dict({'type': 'rect', 
@@ -89,20 +68,25 @@ def get_figure(df, x_col, y_col, selectedpoints, selectedpoints_local):
      Output('g3', 'figure')],
     [Input('g1', 'selectedData'),
      Input('g2', 'selectedData'),
-     Input('g3', 'selectedData')]
+     Input('g3', 'selectedData'),
+     Input('p1x', 'value'),
+     Input('p1y', 'value'),
+     Input('p2x', 'value'),
+     Input('p2y', 'value'),
+     Input('p3x', 'value'),
+     Input('p3y', 'value'),
+     Input('std', 'value')]
 )
-def callback(selection1, selection2, selection3):
+def callback(selection1, selection2, selection3, v1x, v1y, v2x, v2y, v3x, v3y, std):
+    DF = df if 'standardized data' in std else dfu
     selectedpoints = df.index
     for selected_data in [selection1, selection2, selection3]:
         if selected_data and selected_data['points']:
             selectedpoints = np.intersect1d(selectedpoints,
                 [p['customdata'] for p in selected_data['points']])
-
-    return [get_figure(df, "tas", "pr", selectedpoints, selection1),
-            get_figure(df, "gpp", "ra", selectedpoints, selection2),
-            get_figure(df, "nbp", "hurs", selectedpoints, selection3)]
-
+    return [get_figure(DF, v1x, v1y, selectedpoints, selection1),
+            get_figure(DF, v2x, v2y, selectedpoints, selection2),
+            get_figure(DF, v3x, v3y, selectedpoints, selection3)]
 
 if __name__ == '__main__':
-
     app.run_server(debug=True)
