@@ -1,5 +1,24 @@
 # Meeting Notes
 
+## 2020/11/6
+
+### Visualization Feedback
+
+* Contribution plots should be in terms of areas
+* The entire visualization needs more labeling
+* Coloring should be made consisitent
+* Needs more linkage, fade the map when things are selected
+* Could we use the size of the markers in the parametric plots to
+  indicate something, perhaps area contribution at the given time
+  indicated? Or it could be the within-cluster variance
+* Need a view which shows things from a single cluster point of view
+  as well. What are the distributions of values in a cluster? At what
+  times do we see the clusters?
+* We want to keep the time range back to 1850 even if we later only
+  show vulnerability across a range in the modern era. This is to
+  better understand what has changed and define regions in their
+  historical context
+
 ## 2020/10/12
 
 * Jitu/Nate will pursue climate driver clustering, Jitu already has
