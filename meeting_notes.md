@@ -1,5 +1,41 @@
 # Meeting Notes
 
+## 2020/11/17
+
+* That we want NBT engaged is clear to me, which is what motivated me
+  to try to present/visualize the work in a way that could bring
+  others along with us.
+* However, I had not really thought about what we help we should ask
+  them for. In what form could we accept feedback?
+* We need to find a way to engage them for ideas of what we could
+  cluster that might be helpful. This gets to Anthony's workshop idea,
+  but we should do some thinking well before that.
+* I am envisioning a spreadsheet/form where we could ask for 
+  1. a variable to cluster, this could be some direct output like gpp
+     or something that we may have to think about how to estimate from
+     model output.
+  2. the time frame to stack. For example, we did seasonal/decadal
+     averages for the gpp comparison we showed. This will vary from
+     variable to variable.
+  3. the other variables to include in the cluster, most probably some
+     aspects of variables which control the primary variable to
+     cluster. In the case of our run, this was tas and pr.
+* Then we could run each of these solo, like the gpp run, to get an
+  understanding of individual effects with a view to how to combine
+  them in a more complete clustering.
+* One doubt I heard expressed related to processes not represented in
+  the model. It may be that ecosystems are most vulnerable in a
+  dimension not represented in any model--our analysis won't possibly
+  capture that.
+* Another doubt was related to being able to express confidence in our
+  assessment of what is vulnerable. I feel that the use of multiple
+  models can partly do this, but the comment may have come more from a
+  place of skepticism that models are useful. Ultimately we will make
+  recommendations and they will have to assess if they should be
+  believed.
+
+### Zoom Chat Dump
+
 ## 2020/11/6
 
 ### Visualization Feedback
@@ -40,4 +76,4 @@
   Ecosystems language in the LDRD call in the first place. They are a
   good group to engage to help get feedback.
   - Giving them a project overview on Nov 13, any results we can piece
-    together is an opportunity for feedback
+      together is an opportunity for feedback
