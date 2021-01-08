@@ -1,0 +1,4 @@
+[MASTER]
+disable = locally-disabled,file-ignored,no-else-return,no-name-in-module
+good-names = i,j,k,_,fn
+reports = no
