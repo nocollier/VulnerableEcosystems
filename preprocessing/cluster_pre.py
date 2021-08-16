@@ -2,13 +2,19 @@ import os
 import pickle
 import numpy as np
 from ILAMB.ModelResult import ModelResult
+from ILAMB.Variable import Variable
+from ILAMB.Regions import Regions
+
+ilamb_region = Regions()
 
 pref_units = {}
-pref_units[ 'pr'] = 'mm d-1'
+pref_units['pr'] = 'mm d-1'
 pref_units['gpp'] = 'g m-2 d-1'
 pref_units['tas'] = 'degC'
+pref_units['tasmin'] = 'degC'
+pref_units['tasmax'] = 'degC'
 
-def PrepareClusterInputs(casename,models,variables,times,variability=True,reference_period=None,regions=["global"],quiet=False):
+def PrepareClusterInputs(casename,models,variables,times,regions=["global"],quiet=False):
     """Uses ILAMB objects to prepare clustering for use with Forrest/Jitu's code.
 
     The user provides the models, variables, and times through which
@@ -24,12 +30,10 @@ def PrepareClusterInputs(casename,models,variables,times,variability=True,refere
         the identifier to be used for this case
     models : ILAMB.ModelResult or list of ILAMB.ModelResult
         the models to include in the clustering
-    variables : str or list of str
+    variables : list of dict
         the variables to include in the clustering
     times : array-like
         the boundaries of the intervals to be considered in years
-    variability : bool, optional
-        enable to include variability in the cluster columns
     quiet : bool
         enable to turnoff the debugging output
 
@@ -40,60 +44,75 @@ def PrepareClusterInputs(casename,models,variables,times,variability=True,refere
     if type(regions)==str: regions = [regions]
     years = np.asarray(times)[:-1]
     times = (np.asarray(times,dtype=float)-1850)*365
-    change = False
-    if reference_period is not None:
-        change = True
-        reference_period = (np.asarray(reference_period,dtype=float)-1850)*365
-        assert reference_period.size==2
 
     # pop models that do not have the required variables
-    V = variables
+    V = []
+    [V.extend(d['vars']) for d in variables]    
     M = [m for m in models if set(V).issubset(m.variables.keys())]
     if len(M) != len(models) and not quiet:
         pop = list(set(models).difference(set(M)))
         print("Some models do not have required variables:")
         for m in pop:
             print("  - %s: missing [%s]" % (m.name,",".join(list(set(V).difference(m.variables.keys())))))
+    if len(M) == 0:
+        print("No model contained all variables, exiting")
+        return
 
-    # if based on change, we need to compute the reference period
-    if change:
-        rstack = []
-        for m in M:
-            columns = {}
-            for vname in V:
+    rstack = []
+    for m in M:
+        columns = {}        
+        for j,dct in enumerate(variables):
+            if 'reference_period' not in dct: continue
+            reference_period = (np.asarray(dct['reference_period'],dtype=float)-1850)*365
+            assert reference_period.size == 2
+            for vname in dct['vars']:
                 v = m.extractTimeSeries(vname,initial_time=reference_period[0],final_time=reference_period[1])
                 v.trim(t=reference_period)
                 if vname in pref_units: v.convert(pref_units[vname])
                 lbl = 'mean(%s) [%s]' % (vname,v.unit)
                 columns[lbl] = v.integrateInTime(mean=True)
-                if variability:
+                if 'variability' in dct and dct['variability']:
                     lbl = 'std(%s) [%s]' % (vname,v.unit)
                     columns[lbl] = v.variability()
         rstack.append(columns)
-
-    # build the stack based on the aspect of the variables
+        
+    # create the time slices
     tstack = []
     for t in range(times.size-1):
         mstack = []
         for i,m in enumerate(M):
             columns = {}
-            for vname in V:
-                v = m.extractTimeSeries(vname,initial_time=times[t],final_time=times[t+1])
-                v.trim(t=times[t:(t+2)])
-                if vname in pref_units: v.convert(pref_units[vname])
-                lbl = 'mean(%s) [%s]' % (vname,v.unit)
-                columns[lbl] = v.integrateInTime(mean=True)
-                if change: columns[lbl].data -= rstack[i][lbl].data
-                if variability:
-                    lbl = 'std(%s) [%s]' % (vname,v.unit)
-                    columns[lbl] = v.variability()
-                    if change: columns[lbl].data -= rstack[i][lbl].data
+            for j,dct in enumerate(variables):
+                change = True if 'reference_period' in dct else False                    
+                for vname in dct['vars']:
+                    
+                    # extract the variable
+                    v = m.extractTimeSeries(vname,initial_time=times[t],final_time=times[t+1])
+                    v.trim(t=times[t:(t+2)])
+                    if vname in pref_units: v.convert(pref_units[vname])                
+
+                    if 'count' in dct:
+                        if type(dct['count']) is not list: dct['count'] = [dct['count']]
+                        lbl = 'count(%s%s) [1]' % (vname,dct['count'][0])
+                        data = eval("*".join(["(v.data %s)" % i for i in dct['count']])).sum(axis=0)
+                        columns[lbl] = Variable(data = data,
+                                                unit = "1",
+                                                lat = v.lat,
+                                                lon = v.lon)
+                    else:
+                        lbl = 'mean(%s) [%s]' % (vname,v.unit)
+                        columns[lbl] = v.integrateInTime(mean=True)
+                        if change: columns[lbl].data -= rstack[i][lbl].data
+                        if 'variability' in dct and dct['variability']:
+                            lbl = 'std(%s) [%s]' % (vname,v.unit)
+                            columns[lbl] = v.variability()
+                            if change: columns[lbl].data -= rstack[i][lbl].data
             mstack.append(columns)
         tstack.append(mstack)
-
+                        
     # data within each model must be uniformly masked, also build up
     # coords/areas
-    LAT = []; LON = []; AREA = []
+    LAT = []; LON = []; AREA = []; MODEL = []
     for i,m in enumerate(M):
         v = tstack[0][i][list(columns.keys())[0]]
         mask = ilamb_region.getMask(regions[0],v)
@@ -108,10 +127,12 @@ def PrepareClusterInputs(casename,models,variables,times,variability=True,refere
         LAT .append(np.ma.masked_array( lat,mask=mask).compressed())
         LON .append(np.ma.masked_array( lon,mask=mask).compressed())
         AREA.append(np.ma.masked_array(area,mask=mask).compressed())
+        MODEL.append(np.ma.masked_array(np.ones(area.shape)*i,mask=mask).compressed())
     lat  = np.hstack(LAT)
     lon  = np.hstack(LON)
     area = np.hstack(AREA)
-
+    area = np.vstack([area,np.hstack(MODEL)])
+    
     # write output
     pathname = os.path.join(casename,"data")
     if not os.path.isdir(pathname): os.makedirs(pathname)
@@ -131,9 +152,21 @@ def PrepareClusterInputs(casename,models,variables,times,variability=True,refere
                area.T,delimiter=' ')
     with open(os.path.join(pathname,'names.%s' % casename),'wb') as f:
         pickle.dump(list(columns.keys()),f)
+    with open(os.path.join(pathname,'models.%s' % casename),'wb') as f:
+        pickle.dump([m.name for m in M],f)
 
+    
 if __name__ == "__main__":
 
+    """ The following is just a sample of how you can setup a comparison,
+    the below could sit in its own script where we just:
+
+    from cluster_pre import PrepareClusterInputs
+
+    The main difference is that now we pass in a dictionary with
+    groups of variables and keywords of how we want things
+    preprocessed. See below for samples.
+    """
     # register a ILAMB region which exlcudes Antarctica
     from ILAMB.Regions import Regions
     ilamb_region = Regions()
@@ -149,8 +182,7 @@ if __name__ == "__main__":
         m = ModelResult("",modelname = "E3SM-1-1",filter = "E3SM-1-1",
                         paths = ["/gpfs/alpine/cli143/proj-shared/mxu/CMIP6/CMIP",
                                  "/gpfs/alpine/cli143/proj-shared/mxu/CMIP6/ScenarioMIP",
-                                 "/gpfs/alpine/cli143/proj-shared/mxu/drought_indices_reprocess/indices_1850-2100-calib1850-2100/",
-                                 "/ccs/home/nate/cli143/Deeksha/analysis/E3SM/postproc"])
+                                 "/gpfs/alpine/cli143/proj-shared/mxu/drought_indices_reprocess/indices_1850-2100-calib1850-2100/"])
         # a little hacking to only get the combined and not combined-bgc
         for v in m.variables:
             l = [a for a in m.variables[v] if '_combined_' in a]
@@ -159,38 +191,11 @@ if __name__ == "__main__":
             pickle.dump(m,out,pickle.HIGHEST_PROTOCOL)
 
     # setup clustering
-    if 0:
-        PrepareClusterInputs("standard_e3sm",      # casename
-                             m,                    # ModelResult or list of them
-                             ['tas','pr','mrsos'], # variables to include
-                             range(1850,2101,10),  # the time slices to use in years
-                             variability = True,   # will also include stdev in the clusters
-                             regions=['global','noant']) # the regions over which we want to cluster
-    if 0:
-        PrepareClusterInputs("change_e3sm",        # casename
-                             m,                    # ModelResult or list of them
-                             ['tas','pr','mrsos'], # variables to include
-                             range(1960,2101,10),  # the time slices to use in years
-                             variability = True,   # will also include stdev in the clusters
-                             regions=['global','noant'], # the regions over which we want to cluster
-                             reference_period = [1960,1990]) # if reference period used, we get change clusters
-    if 0:
-        PrepareClusterInputs("drought_e3sm",
-                             m,
-                             ['scpdsi','spi_pearson_03','spi_pearson_09','spei_pearson_03','spei_pearson_09'],
-                             range(1850,2101,10),
-                             variability = False,
-                             regions=['global','noant'])
-    if 1:
-        PrepareClusterInputs("extremes_e3sm",       # casename
-                             m,                     # ModelResult or list of them
-                             ['pr_q90','tasmax_q90','tasmin_q05'], # variables to include
-                             range(1850,2101,10),   # the time slices to use in years
-                             variability = False,   # will also include stdev in the clusters
-                             regions=['global','noant']) # the regions over which we want to cluster
+    PrepareClusterInputs("sample_e3sm",
+                         m,
+                         [{'vars':['tas','pr'],'variability':True},             # mean and std clustering of tas and pr
+                          {'vars':['mrsos']   ,'reference_period':[1960,1990]}, # mean change of mrsos with respect to 1960-1990's
+                          {'vars':['scpdsi']  ,'count':['<-2','>=-3']}],        # how many months does scpdsi fall in [-3,-2)
+                         range(1850,2101,10),
+                         regions=['global','noant'])
 
-"""
-drought if < -1
-threshold on the 5th percentile, 10th percentile
-pr/tas percentiles?
-"""
