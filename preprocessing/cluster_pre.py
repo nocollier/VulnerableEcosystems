@@ -13,6 +13,11 @@ pref_units['gpp'] = 'g m-2 d-1'
 pref_units['tas'] = 'degC'
 pref_units['tasmin'] = 'degC'
 pref_units['tasmax'] = 'degC'
+pref_units['tasmaxQ10'] = 'degC'
+pref_units['tasmaxQ30'] = 'degC'
+pref_units['tasmaxQ50'] = 'degC'
+pref_units['tasmaxQ70'] = 'degC'
+pref_units['tasmaxQ90'] = 'degC'
 
 def PrepareClusterInputs(casename,models,variables,times,regions=["global"],quiet=False):
     """Uses ILAMB objects to prepare clustering for use with Forrest/Jitu's code.
