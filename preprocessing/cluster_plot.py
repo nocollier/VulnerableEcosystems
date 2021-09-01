@@ -109,7 +109,7 @@ class ClusterViz():
         self.df_centroids = df_centroids
         self.df_cluster = df_cluster
         
-    def PlotCentroids(self):
+    def PlotCentroids(self,xy=(0,1)):
         rem_k = self.selected_k
         ks = sorted(list(self.seeds.keys()))
         DF = []
@@ -120,10 +120,10 @@ class ClusterViz():
             df['ks'] = df['k'].astype(str)
             DF.append(df)
         df = pd.concat(DF)
-        col = [c for c in df.columns if "count" in c or "AGR" in c]
+        col = list(df.columns)
         fig = px.scatter(df,
-                         x = col[0],
-                         y = col[1],
+                         x = col[xy[0]],
+                         y = col[xy[1]],
                          color = "ks",
                          hover_data = col)
         fig.update_traces(marker = dict(size=12))
