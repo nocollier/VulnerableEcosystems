@@ -160,7 +160,92 @@ def PrepareClusterInputs(casename,models,variables,times,regions=["global"],quie
     with open(os.path.join(pathname,'models.%s' % casename),'wb') as f:
         pickle.dump([m.name for m in M],f)
 
-    
+def PrepareCluster(casename,models,variables,times,regions=["global"],quiet=False):
+    """Uses ILAMB objects to prepare clustering for use with Forrest/Jitu's code.
+
+    Parameters
+    ----------
+    casename : str
+        the identifier to be used for this case
+    models : ILAMB.ModelResult or list of ILAMB.ModelResult
+        the models to include in the clustering
+    variables : list of dict
+        the variables to include in the clustering
+    times : array-like
+        the boundaries of the intervals to be considered in years
+    quiet : bool
+        enable to turnoff the debugging output
+
+    """
+    # check types
+    if type(models) == ModelResult: models = [models]
+    for m in models: assert(type(m) == ModelResult)
+    if type(regions)==str: regions = [regions]
+    years = np.asarray(times)[:-1]
+    times = (np.asarray(times,dtype=float)-1850)*365
+    pathname = os.path.join(casename,"data")
+    if not os.path.isdir(pathname): os.makedirs(pathname)
+
+    row = 0
+    data = []
+    stack = []
+    for m in models:        
+        lat = lon = area = mask = None
+        
+        for i,y in enumerate(years):
+
+            complete = True
+            columns  = {}
+            
+            for j,dct in enumerate(variables):
+                for vname in dct['vars']:
+                    if not complete: continue
+                    
+                    # extract the variable
+                    try:
+                        v = m.extractTimeSeries(vname,initial_time=times[i],final_time=times[i+1])
+                        v.trim(t=times[i:(i+2)])
+                        if vname in pref_units: v.convert(pref_units[vname])                
+                    except:
+                        complete = False
+                        continue
+
+                    # compute the aspect to cluster
+                    lbl = 'mean(%s) [%s]' % (vname,v.unit)
+                    columns[lbl] = v.integrateInTime(mean=True)
+                    
+            if not complete: continue
+            if mask is None:
+
+                # build up the mask
+                for vname in columns:
+                    v = columns[vname]
+                    if mask is None: mask = v.data.mask
+                    mask += v.data.mask
+                for region in regions:
+                    mask += ilamb_region.getMask(region,v)
+
+                # build coordinate values
+                lat,lon = np.meshgrid(v.lat,v.lon,indexing='ij')
+                lat  = np.ma.masked_array(   lat,mask=mask).compressed()
+                lon  = np.ma.masked_array(   lon,mask=mask).compressed()
+                area = np.ma.masked_array(v.area,mask=mask).compressed()
+                size = lat.size
+
+                # write out the coordinates
+                np.savetxt(os.path.join(pathname,'coords.%s' % m.name),
+                           np.vstack([lon,lat,area]).T,delimiter=' ')
+
+            # apply the mask consistently across all columns
+            data.append(np.hstack([np.ma.masked_array(columns[vname].data,mask=mask).compressed() for vname in columns]))
+            stack.append("%s %d %d" % (m.name,y,row))
+            row += size
+
+    np.savetxt(os.path.join(pathname,'ascii.%s' % casename),
+               np.hstack(data).T,delimiter=' ')
+    with open(os.path.join(pathname,'stack.%s' % casename),mode='w') as f:
+        f.write("\n".join(stack))
+
 if __name__ == "__main__":
 
     """ The following is just a sample of how you can setup a comparison,
@@ -178,29 +263,15 @@ if __name__ == "__main__":
     ilamb_region.addRegionLatLonBounds("noant","No Antarctica",(-60,89.999),(-179.999,179.999),"")
     ilamb_region.addRegionNetCDF4(os.path.join(os.environ["ILAMB_ROOT"],"DATA/regions/GlobalLand.nc"))
 
-    # read in the E3SM model and cache
-    pkl_file = "./E3SM-1-1.pkl"
-    if os.path.isfile(pkl_file):
-        with open(pkl_file,'rb') as infile:
-            m = pickle.load(infile)
-    else:
-        m = ModelResult("",modelname = "E3SM-1-1",filter = "E3SM-1-1",
-                        paths = ["/gpfs/alpine/cli143/proj-shared/mxu/CMIP6/CMIP",
-                                 "/gpfs/alpine/cli143/proj-shared/mxu/CMIP6/ScenarioMIP",
-                                 "/gpfs/alpine/cli143/proj-shared/mxu/drought_indices_reprocess/indices_1850-2100-calib1850-2100/"])
-        # a little hacking to only get the combined and not combined-bgc
-        for v in m.variables:
-            l = [a for a in m.variables[v] if '_combined_' in a]
-            if len(l)==1: m.variables[v] = l
-        with open(pkl_file,'wb') as out:
-            pickle.dump(m,out,pickle.HIGHEST_PROTOCOL)
+    # read in model
+    M = []
+    M.append(ModelResult("/home/nate/data/ILAMB/MODELS/CMIP6/CESM2/",modelname="CESM2"))
+    M.append(ModelResult("",modelname = "Reference",paths = ["/home/nate/data/ILAMB/DATA/pr/GPCP2",
+                                                             "/home/nate/data/ILAMB/DATA/tas/CRU"]))
 
     # setup clustering
-    PrepareClusterInputs("sample_e3sm",
-                         m,
-                         [{'vars':['tas','pr'],'variability':True},             # mean and std clustering of tas and pr
-                          {'vars':['mrsos']   ,'reference_period':[1960,1990]}, # mean change of mrsos with respect to 1960-1990's
-                          {'vars':['scpdsi']  ,'count':['<-2','>=-3']}],        # how many months does scpdsi fall in [-3,-2)
-                         range(1850,2101,10),
-                         regions=['global','noant'])
-
+    PrepareCluster("sample",
+                   M,
+                   [{'vars':['tas','pr'],'variability':False }],
+                   range(1930,2011,10),
+                   regions=['global','noant'])
