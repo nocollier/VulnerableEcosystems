@@ -190,14 +190,18 @@ def PrepareCluster(casename,models,variables,times,regions=["global"],quiet=Fals
     data = []
     stack = []
     for m in models:        
-        lat = lon = area = mask = None
+        lat = lon = area = mask = names = None
+        print(m.name)
         
         for i,y in enumerate(years):
-
             complete = True
             columns  = {}
             
             for j,dct in enumerate(variables):
+
+                compute_mean = dct[       'mean'] if        'mean' in dct else True
+                compute_var  = dct['variability'] if 'variability' in dct else False
+                
                 for vname in dct['vars']:
                     if not complete: continue
                     
@@ -205,14 +209,22 @@ def PrepareCluster(casename,models,variables,times,regions=["global"],quiet=Fals
                     try:
                         v = m.extractTimeSeries(vname,initial_time=times[i],final_time=times[i+1])
                         v.trim(t=times[i:(i+2)])
+                        if (v.time_bnds[-1,1]-v.time_bnds[0,0])/(times[i+1]-times[i]) < 0.9:
+                            complete = False
+                            continue
                         if vname in pref_units: v.convert(pref_units[vname])                
                     except:
                         complete = False
                         continue
 
                     # compute the aspect to cluster
-                    lbl = 'mean(%s) [%s]' % (vname,v.unit)
-                    columns[lbl] = v.integrateInTime(mean=True)
+                    if compute_mean:
+                        lbl = 'mean(%s) [%s]' % (vname,v.unit)
+                        columns[lbl] = v.integrateInTime(mean=True)
+                    if compute_var:
+                        lbl = 'std(%s) [%s]' % (vname,v.unit)
+                        columns[lbl] = v.variability()
+
                     
             if not complete: continue
             if mask is None:
@@ -231,13 +243,15 @@ def PrepareCluster(casename,models,variables,times,regions=["global"],quiet=Fals
                 lon  = np.ma.masked_array(   lon,mask=mask).compressed()
                 area = np.ma.masked_array(v.area,mask=mask).compressed()
                 size = lat.size
-
+                names = list(columns.keys())
+                
                 # write out the coordinates
                 np.savetxt(os.path.join(pathname,'coords.%s' % m.name),
                            np.vstack([lon,lat,area]).T,delimiter=' ')
-
+                
+            print("  ",y)
             # apply the mask consistently across all columns
-            data.append(np.hstack([np.ma.masked_array(columns[vname].data,mask=mask).compressed() for vname in columns]))
+            data.append(np.vstack([np.ma.masked_array(columns[vname].data,mask=mask).compressed() for vname in columns]))
             stack.append("%s %d %d" % (m.name,y,row))
             row += size
 
@@ -245,7 +259,9 @@ def PrepareCluster(casename,models,variables,times,regions=["global"],quiet=Fals
                np.hstack(data).T,delimiter=' ')
     with open(os.path.join(pathname,'stack.%s' % casename),mode='w') as f:
         f.write("\n".join(stack))
-
+    with open(os.path.join(pathname,'names.%s' % casename),'wb') as f:
+        pickle.dump(names,f)
+        
 if __name__ == "__main__":
 
     """ The following is just a sample of how you can setup a comparison,
@@ -275,3 +291,6 @@ if __name__ == "__main__":
                    [{'vars':['tas','pr'],'variability':False }],
                    range(1930,2011,10),
                    regions=['global','noant'])
+
+
+    
